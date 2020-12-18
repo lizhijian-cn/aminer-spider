@@ -1,7 +1,10 @@
 import json
+import time
 
 import scrapy
 from scrapy.http import JsonRequest
+
+from aminer_spider.items import AuthorItem, PaperItem
 
 
 class AminerSpider(scrapy.Spider):
@@ -80,8 +83,13 @@ class AminerSpider(scrapy.Spider):
             for line in file:
                 author = json.loads(line)
                 data[0]['parameters']['ids'][0] = author['id']
-                yield JsonRequest(personal_info_url, callback=self.parse, data=data)
+                meta = {'orgs': ''}
+                if 'orgs' in author:
+                    meta['orgs'] = author['orgs']
+                time.sleep(0.5)
+                yield JsonRequest(personal_info_url, callback=self.parse, data=data, meta=meta)
 
+    # parse author
     def parse(self, response, **kwargs):
         paper_url = 'https://apiv2.aminer.cn/magic?a=GetPersonPubs__person.GetPersonPubs___'
         data = [
@@ -128,14 +136,47 @@ class AminerSpider(scrapy.Spider):
             raise RuntimeError('author not found')
 
         author_info = res['data'][0]['data'][0]
-        # store author
+        author = AuthorItem()
+        author['id'] = author_info['id']
+        author['name'] = author_info['name']
+        author['name_zh'] = author_info['name_zh']
+        author['orgs'] = response.meta['orgs']
+        author['avatar'] = author_info['avatar'] if 'avatar' in author_info else ''
+        author['h_index'] = author_info['indices']['hindex']
+        author['n_pubs'] = author_info['indices']['pubs']
+        author['n_citation'] = author_info['indices']['citations']
+        yield author
 
         data[0]['parameters']['ids'][0] = author_info['id']
         # paper_count = author_info['indices']['pubs']
         paper_count = 10
         for offset in range(0, paper_count, 20):
             data[0]['parameters']['offset'] = offset
+            time.sleep(0.5)
             yield JsonRequest(paper_url, callback=self.parse_paper, data=data)
 
     def parse_paper(self, response):
-        print(response.text)
+        res = json.loads(response.text)
+        if not res['data'][0]['succeed']:
+            raise RuntimeError('paper not found')
+
+        paper = PaperItem()
+        paper_info = res['data'][0]['data'][0]
+
+        # paper['id'] =
+        # paper['title'] =
+        # paper['authors'] =    # list
+        # paper['abstract'] =
+        # paper['venue'] =
+        # paper['year'] =
+        # paper['n_citation'] =
+        # paper['doi'] =
+        # paper['lang'] =
+        # paper['page_start'] =
+        # paper['page_end'] =
+        # paper['volume'] =
+        # paper['issue'] =
+        # paper['issn'] =
+        # paper['isbn'] =
+        # paper['pdf'] =
+        # paper['url'] =
